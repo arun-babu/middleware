@@ -174,7 +174,7 @@ login_success (const char *id, const char *apikey)
 	bool login_result = false;
 
 	if (id == NULL || apikey == NULL || *id == '\0' || *apikey == '\0')
-		return false;
+		goto done;
 
 	kore_buf_append(query,"SELECT blocked,salt,password_hash FROM users WHERE id ='",
 		       sizeof("SELECT blocked,salt,password_hash FROM users WHERE id ='") - 1);
@@ -198,6 +198,10 @@ login_success (const char *id, const char *apikey)
 
 	salt 	 	= PQgetvalue(result,0,1);
 	password_hash	= PQgetvalue(result,0,2);
+
+	// there is no salt or password hash in db ?
+	if (salt[0] == '\0' || password_hash[0] == '\0')
+		goto done;
 
 	debug_printf("strlen of salt = %d (%s)\n",strlen(salt),salt);
 	debug_printf("strlen of apikey = %d (%s)\n",strlen(apikey),apikey);
@@ -232,7 +236,6 @@ login_success (const char *id, const char *apikey)
 	);
 
 	hash_string[64] = '\0';
-
 
 	if (strncmp(hash_string,password_hash,64) == 0)
 		login_result = true;
