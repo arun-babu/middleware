@@ -10,7 +10,7 @@
 #include <bsd/string.h>
 #include <bsd/stdlib.h>
 
-#if 1
+#if 0
 	#define debug_printf(...)
 #else
 	#define debug_printf(...) printf(__VA_ARGS__)
@@ -38,8 +38,8 @@ bool login_success (const char *, const char *);
 PGconn *psql = NULL;
 PGresult *result = NULL;
 
+uint8_t string_to_be_hashed 	[256];
 uint8_t	binary_hash 		[SHA256_DIGEST_LENGTH];
-uint8_t string_to_be_hashed 	[SHA256_DIGEST_LENGTH*2 + 1];
 uint8_t hash_string		[SHA256_DIGEST_LENGTH*2 + 1];
 
 struct kore_buf *query = NULL;
@@ -52,6 +52,8 @@ init (int state)
 
 	if (psql == NULL)
 	{
+		// XXX this user must only have read permissions on DB
+
 		psql = PQconnectdb("user=postgres password=password");
 		if (PQstatus(psql) == CONNECTION_BAD)
 		{
@@ -73,8 +75,6 @@ login_success (const char *id, const char *apikey)
 {
 	char *salt;
 	char *password_hash;
-
-	printf("Got id = {%s} : pwd = {%s}\n",id,apikey);
 
 	bool login_result = false;
 
@@ -104,14 +104,20 @@ login_success (const char *id, const char *apikey)
 	salt 	 	= PQgetvalue(result,0,1);
 	password_hash	= PQgetvalue(result,0,2);
 
-	strlcpy((char *)string_to_be_hashed, apikey, 32);
-	strlcat((char *)string_to_be_hashed, salt,   64);
+	debug_printf("strlen of salt = %d (%s)\n",strlen(salt),salt);
+	debug_printf("strlen of apikey = %d (%s)\n",strlen(apikey),apikey);
 
-	SHA256((const uint8_t*)string_to_be_hashed,64,binary_hash);
+	strlcpy(string_to_be_hashed, apikey, 33);
+	strlcat(string_to_be_hashed, salt,   65);
+	strlcat(string_to_be_hashed, id,    250);
+
+	SHA256((const uint8_t*)string_to_be_hashed,strlen(string_to_be_hashed),binary_hash);
+
+	debug_printf("login_success STRING TO BE HASHED = {%s}\n",string_to_be_hashed);
 
 	sprintf	
 	(
-		(char *)hash_string,
+		hash_string,
 		"%02x%02x%02x%02x"
 		"%02x%02x%02x%02x"
 		"%02x%02x%02x%02x"
@@ -132,8 +138,9 @@ login_success (const char *id, const char *apikey)
 
 	hash_string[64] = '\0';
 
-	if (strncmp((char *)hash_string,password_hash,64) == 0)
+	if (strncmp(hash_string,password_hash,64) == 0)
 		login_result = true;
+
 done:
 	kore_buf_reset(query);
 
